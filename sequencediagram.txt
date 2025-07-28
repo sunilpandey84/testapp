@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant User
+    participant Orchestrator
+    participant CoordinatorAgent as Coordinator
+    participant ElementAgent as Element Tracer
+    participant ConstructionAgent as Graph Constructor
+    participant FinalizeAgent as Finalizer
+    participant DB as Metadata DB
+
+    User->>Orchestrator: `trace LIQ_PROD_CD element`
+    Orchestrator->>Coordinator: Analyze query
+    Coordinator->>DB: Get available elements/contracts
+    DB-->>Coordinator: Return names
+    Coordinator-->>Orchestrator: Decision: Element-based, search "LIQ_PROD_CD"
+    Orchestrator->>ElementAgent: Trace element "LIQ_PROD_CD"
+    ElementAgent->>DB: Find element by name
+    DB-->>ElementAgent: Return element details
+    ElementAgent->>DB: Trace connections
+    DB-->>ElementAgent: Return mappings
+    ElementAgent-->>Orchestrator: Tracing complete, return mappings
+    Orchestrator->>ConstructionAgent: Build lineage graph
+    ConstructionAgent-->>Orchestrator: Return nodes and edges
+    Orchestrator->>FinalizeAgent: Compile final results
+    FinalizeAgent-->>Orchestrator: Return final JSON with summary
+    Orchestrator-->>User: Display final lineage graph
