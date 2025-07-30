@@ -657,11 +657,7 @@ const App = () => {
       setCurrentAgent('coordinator');
       const response = await axios.post(`${API_BASE_URL}/lineage/query`, {
         query: query,
-        session_id: sessionId,
-        context: {
-          preferred_output: 'detailed',
-          max_depth: 5
-        }
+        session_id: sessionId
       });
       return response.data;
     } catch (error) {
