@@ -1,14 +1,9 @@
-// App.js - Main React Component
+// App.js - Main React Component with Tabular Results
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import Plot from 'react-plotly.js';
 import './App.css';
-
-
-const CHAT_MODES = {
-  LINEAGE: 'lineage',
-  CONTRACT: 'contract'
-};
+import ReactMarkdown from 'react-markdown';
+import { Copy, Download, RefreshCw, Database, FileText, MessageSquare, Settings, BotMessageSquare } from 'lucide-react';
 
 // Message Types
 const MESSAGE_TYPES = {
@@ -16,14 +11,22 @@ const MESSAGE_TYPES = {
   VISUALIZATION: 'visualization',
   FEEDBACK_REQUEST: 'feedback_request',
   ERROR: 'error',
-  SYSTEM: 'system'
+  SYSTEM: 'system',
+  MARKDOWN: 'markdown',
+  TABLE: 'table'
+};
+
+// Chat Modes
+const CHAT_MODES = {
+  LINEAGE: 'lineage',
+  CONTRACT: 'contract'
 };
 
 // Chat Message Class
 class ChatMessage {
   constructor(role, content, messageType = MESSAGE_TYPES.TEXT, metadata = {}) {
     this.id = Date.now() + Math.random();
-    this.role = role; // 'user', 'assistant', 'system'
+    this.role = role;
     this.content = content;
     this.timestamp = new Date();
     this.messageType = messageType;
@@ -41,7 +44,7 @@ const ModeSelector = ({ currentMode, onModeChange, disabled }) => {
           onClick={() => onModeChange(CHAT_MODES.LINEAGE)}
           disabled={disabled}
         >
-          <Database size={20} />
+          <Database size={20}/>
           <span>Data Lineage</span>
           <small>Trace & analyze data flows</small>
         </button>
@@ -54,19 +57,12 @@ const ModeSelector = ({ currentMode, onModeChange, disabled }) => {
           <span>Contract Creation</span>
           <small>Generate data contracts & metadata</small>
         </button>
+
       </div>
-      <div className="mode-indicator">
-        <span className="indicator-dot" style={{
-          backgroundColor: currentMode === CHAT_MODES.LINEAGE ? '#3b82f6' : '#10b981'
-        }}></span>
-        <span className="indicator-text">
-          {currentMode === CHAT_MODES.LINEAGE ? 'Lineage Mode' : 'Contract Mode'}
-        </span>
-      </div>
+
     </div>
   );
 };
-
 // Markdown Message Component
 const MarkdownMessage = ({ content, metadata }) => {
   const [copied, setCopied] = useState(false);
@@ -201,27 +197,6 @@ const StatusIndicator = ({ status, mode }) => {
     </div>
   );
 };
-// Status Indicator Component
-const StatusIndicator = ({ status }) => {
-  const statusConfig = {
-    processing: { color: '#17a2b8', text: 'Processing...' },
-    waiting: { color: '#6c757d', text: 'Waiting for input...' },
-    ready: { color: '#28a745', text: 'Ready' },
-    error: { color: '#dc3545', text: 'Error' }
-  };
-
-  const config = statusConfig[status] || statusConfig.ready;
-
-  return (
-    <div className="status-indicator">
-      <span
-        className="status-dot"
-        style={{ backgroundColor: config.color }}
-      ></span>
-      {config.text}
-    </div>
-  );
-};
 
 // Typing Indicator Component
 const TypingIndicator = () => (
@@ -235,135 +210,452 @@ const TypingIndicator = () => (
   </div>
 );
 
-// Network Graph Component
-const NetworkGraph = ({ nodes, edges }) => {
-  if (!nodes || !edges || nodes.length === 0 || edges.length === 0) {
+// Data Elements Table Component
+const DataElementsTable = ({ elements }) => {
+  if (!elements || elements.length === 0) {
     return (
       <div className="no-data-message">
-        <p>No data to visualize</p>
+        <p>No data elements found</p>
       </div>
     );
   }
 
-  // Create layout positions (simplified spring layout)
-  const positions = {};
-  nodes.forEach((node, index) => {
-    const angle = (2 * Math.PI * index) / nodes.length;
-    const radius = Math.min(nodes.length * 20, 200);
-    positions[node.id] = {
-      x: radius * Math.cos(angle),
-      y: radius * Math.sin(angle)
-    };
-  });
-
-  // Prepare edge traces
-  const edgeX = [];
-  const edgeY = [];
-
-  edges.forEach(edge => {
-    if (positions[edge.source] && positions[edge.target]) {
-      edgeX.push(positions[edge.source].x, positions[edge.target].x, null);
-      edgeY.push(positions[edge.source].y, positions[edge.target].y, null);
-    }
-  });
-
-  // Prepare node traces
-  const nodeX = nodes.map(node => positions[node.id]?.x || 0);
-  const nodeY = nodes.map(node => positions[node.id]?.y || 0);
-  const nodeColors = nodes.map(node =>
-    node.type === 'source' ? 'lightblue' : 'lightcoral'
-  );
-  const nodeText = nodes.map(node => node.name);
-  const hoverText = nodes.map(node => `${node.name}<br>Table: ${node.table}`);
-
-  const data = [
-    {
-      x: edgeX,
-      y: edgeY,
-      mode: 'lines',
-      line: { width: 2, color: 'gray' },
-      hoverinfo: 'none',
-      type: 'scatter'
-    },
-    {
-      x: nodeX,
-      y: nodeY,
-      mode: 'markers+text',
-      marker: {
-        size: 15,
-        color: nodeColors,
-        line: { width: 2, color: 'black' }
-      },
-      text: nodeText,
-      textposition: 'middle center',
-      hovertext: hoverText,
-      hoverinfo: 'text',
-      type: 'scatter'
-    }
-  ];
-
-  const layout = {
-    showlegend: false,
-    hovermode: 'closest',
-    margin: { b: 20, l: 5, r: 5, t: 40 },
-    xaxis: { showgrid: false, zeroline: false, showticklabels: false },
-    yaxis: { showgrid: false, zeroline: false, showticklabels: false },
-    height: 400,
-    plot_bgcolor: 'rgba(0,0,0,0)',
-    paper_bgcolor: 'rgba(0,0,0,0)'
-  };
-
   return (
-    <div className="network-graph">
-      <Plot data={data} layout={layout} style={{ width: '100%' }} />
+    <div className="table-container">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Element Name</th>
+            <th>Element Code</th>
+            <th>Table</th>
+            <th>Type</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {elements.map((element, index) => (
+            <tr key={index}>
+              <td className="element-name">{element.name || element.element_name || 'N/A'}</td>
+              <td className="element-code">{element.code || element.element_code || 'N/A'}</td>
+              <td className="table-name">{element.table || element.table_name || 'N/A'}</td>
+              <td className="element-type">
+                <span className={`type-badge ${element.type || 'default'}`}>
+                  {element.type || 'Unknown'}
+                </span>
+              </td>
+              <td className="description">{element.description || 'No description available'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 };
 
-// Lineage Visualization Component
+// Relationships Table Component
+const RelationshipsTable = ({ relationships }) => {
+  if (!relationships || relationships.length === 0) {
+    return (
+      <div className="no-data-message">
+        <p>No relationships found</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="table-container">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Target</th>
+            <th>Relationship Type</th>
+            <th>Direction</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {relationships.map((rel, index) => (
+            <tr key={index}>
+              <td className="source-element">{rel.source || rel.source_element || 'N/A'}</td>
+              <td className="target-element">{rel.target || rel.target_element || 'N/A'}</td>
+              <td className="relationship-type">
+                <span className={`relationship-badge ${rel.type || 'default'}`}>
+                  {rel.type || rel.relationship_type || 'Unknown'}
+                </span>
+              </td>
+              <td className="direction">
+                <span className="direction-indicator">
+                  {rel.direction === 'bidirectional' ? '↔️' : '→'}
+                  {rel.direction || 'unidirectional'}
+                </span>
+              </td>
+              <td className="confidence">
+                <div className="confidence-bar">
+                  <div
+                    className="confidence-fill"
+                    style={{ width: `${(rel.confidence || 0.5) * 100}%` }}
+                  ></div>
+                  <span className="confidence-text">
+                    {Math.round((rel.confidence || 0.5) * 100)}%
+                  </span>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// Transformations Table Component
+const TransformationsTable = ({ transformations }) => {
+  if (!transformations || transformations.length === 0) {
+    return (
+      <div className="no-data-message">
+        <p>No transformations found</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="table-container">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Transformation Name</th>
+            <th>Input Elements</th>
+            <th>Output Elements</th>
+            <th>Operation Type</th>
+            <th>Business Logic</th>
+          </tr>
+        </thead>
+        <tbody>
+          {transformations.map((transform, index) => (
+            <tr key={index}>
+              <td className="transform-name">{transform.name || transform.transformation_name || 'N/A'}</td>
+              <td className="input-elements">
+                <div className="element-list">
+                  {Array.isArray(transform.inputs) ?
+                    transform.inputs.map((input, i) => (
+                      <span key={i} className="element-tag input-tag">{input}</span>
+                    )) :
+                    <span className="element-tag input-tag">{transform.inputs || transform.input_elements || 'N/A'}</span>
+                  }
+                </div>
+              </td>
+              <td className="output-elements">
+                <div className="element-list">
+                  {Array.isArray(transform.outputs) ?
+                    transform.outputs.map((output, i) => (
+                      <span key={i} className="element-tag output-tag">{output}</span>
+                    )) :
+                    <span className="element-tag output-tag">{transform.outputs || transform.output_elements || 'N/A'}</span>
+                  }
+                </div>
+              </td>
+              <td className="operation-type">
+                <span className={`operation-badge ${transform.operation_type || 'default'}`}>
+                  {transform.operation_type || transform.type || 'Unknown'}
+                </span>
+              </td>
+              <td className="business-logic">
+                <div className="logic-description">
+                  {transform.business_logic || transform.description || 'No logic description available'}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// Updated Lineage Visualization Component with Enhanced Executive Summary
+
+
+// Enhanced Executive Summary Formatter Component (inline for convenience)
+const ExecutiveSummaryFormatter = ({ summary }) => {
+  // Function to detect and format different types of content
+  const formatSummaryContent = (text) => {
+    if (!text) return null;
+
+    // Split text into paragraphs
+    const paragraphs = text.split('\n\n').filter(p => p.trim());
+
+    return paragraphs.map((paragraph, index) => {
+      // Check if paragraph contains bullet-like patterns
+      if (paragraph.includes('•') || paragraph.includes('-') || paragraph.includes('*') ||
+          paragraph.match(/^\s*\d+\./) || paragraph.includes('\n-') || paragraph.includes('\n•')) {
+        return formatBulletPoints(paragraph, index);
+      }
+
+      // Check if it's a section header (contains colon and is relatively short)
+      if (paragraph.includes(':') && paragraph.length < 150 && !paragraph.includes('.')) {
+        return formatSectionHeader(paragraph, index);
+      }
+
+      // Regular paragraph with inline highlighting
+      return formatRegularParagraph(paragraph, index);
+    });
+  };
+
+  // Format bullet points
+  const formatBulletPoints = (text, key) => {
+    const lines = text.split('\n').filter(line => line.trim());
+
+    return (
+      <div key={key} className="summary-bullet-section">
+        {lines.map((line, lineIndex) => {
+          // Remove bullet markers and format content
+          const cleanLine = line.replace(/^[\s]*[\d]*[•\-\*\.]\s*/, '').trim();
+          if (!cleanLine) return null;
+
+          return (
+            <div key={lineIndex} className="summary-bullet-item">
+              <span className="bullet-icon">🔹</span>
+              <span className="bullet-content">
+                {highlightInlineContent(cleanLine)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Format section headers
+  const formatSectionHeader = (text, key) => {
+    const colonIndex = text.indexOf(':');
+    const header = text.substring(0, colonIndex).trim();
+    const content = text.substring(colonIndex + 1).trim();
+
+    return (
+      <div key={key} className="summary-section-header">
+        <h4 className="section-title">
+          <span className="section-icon">📋</span>
+          {header}
+        </h4>
+        {content && (
+          <p className="section-content">
+            {highlightInlineContent(content)}
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  // Format regular paragraphs
+  const formatRegularParagraph = (text, key) => {
+    return (
+      <p key={key} className="summary-paragraph">
+        {highlightInlineContent(text)}
+      </p>
+    );
+  };
+
+  // Highlight important content within text
+  const highlightInlineContent = (text) => {
+    // Define patterns to highlight with priority order
+    const patterns = [
+      // Table names (ALL_CAPS or PascalCase)
+      { regex: /\b[A-Z][A-Z_]{2,}[A-Z]?\b/g, className: 'table-name', priority: 1 },
+      // Element codes (usually with underscores)
+      { regex: /\b[a-zA-Z]+_[a-zA-Z_]+\b/g, className: 'element-code', priority: 2 },
+      // Quoted strings (data elements)
+      { regex: /'([^']+)'/g, className: 'data-element', captureGroup: 1, priority: 3 },
+      { regex: /"([^"]+)"/g, className: 'data-element', captureGroup: 1, priority: 3 },
+      // Numbers with units or percentages
+      { regex: /\b\d+(\.\d+)?%\b/g, className: 'metric-highlight', priority: 4 },
+      { regex: /\b\d+\s*(elements?|relationships?|transformations?|tables?|records?|rows?)\b/gi, className: 'metric-highlight', priority: 4 },
+      // Relationship types
+      { regex: /\b(upstream|downstream|bidirectional|depends on|feeds into|derived from|sources from)\b/gi, className: 'relationship-type', priority: 5 },
+      // Operation types
+      { regex: /\b(transformation|aggregation|filtering|joining|calculation|mapping|validation)\b/gi, className: 'transformation', priority: 6 },
+    ];
+
+    let components = [];
+    let processedText = text;
+    let offset = 0;
+
+    // Find all matches with their positions
+    const allMatches = [];
+    patterns.forEach(pattern => {
+      let match;
+      const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+      while ((match = regex.exec(text)) !== null) {
+        allMatches.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          text: pattern.captureGroup ? match[pattern.captureGroup] : match[0],
+          originalText: match[0],
+          className: pattern.className,
+          priority: pattern.priority
+        });
+      }
+    });
+
+    // Sort by position, then by priority for overlapping matches
+    allMatches.sort((a, b) => {
+      if (a.start !== b.start) return a.start - b.start;
+      return a.priority - b.priority;
+    });
+
+    // Remove overlapping matches (keep higher priority)
+    const cleanMatches = [];
+    allMatches.forEach(match => {
+      const hasOverlap = cleanMatches.some(existing =>
+        (match.start < existing.end && match.end > existing.start)
+      );
+      if (!hasOverlap) {
+        cleanMatches.push(match);
+      }
+    });
+
+    // If no matches found, return original text
+    if (cleanMatches.length === 0) {
+      return text;
+    }
+
+    // Build components with highlighted text
+    let lastIndex = 0;
+    cleanMatches.forEach((match, index) => {
+      // Add text before the match
+      if (match.start > lastIndex) {
+        components.push(text.substring(lastIndex, match.start));
+      }
+
+      // Add highlighted match
+      components.push(
+        <span key={`highlight-${index}`} className={match.className}>
+          {match.text}
+        </span>
+      );
+
+      lastIndex = match.end;
+    });
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      components.push(text.substring(lastIndex));
+    }
+
+    return components;
+  };
+
+  return (
+    <div className="enhanced-summary-content">
+      {formatSummaryContent(summary)}
+    </div>
+  );
+};
+
+// Updated Lineage Visualization Component
 const LineageVisualization = ({ result }) => {
+  const [activeTab, setActiveTab] = useState('elements');
+
+  // Extract data from result
+  const elements = result.nodes || result.data_elements || result.elements || [];
+  const relationships = result.edges || result.relationships || [];
+  const transformations = result.transformations || [];
+
   return (
     <div className="visualization-container">
-      {/* Metrics */}
+      {/* Metrics Row */}
       <div className="metrics-row">
         <div className="metric-card">
-          <h4>{result.lineage_type?.replace('_', ' ').toUpperCase() || 'N/A'}</h4>
+          <h6>{result.lineage_type?.replace('_', ' ').toUpperCase() || 'ANALYSIS'}</h6>
           <small>Analysis Type</small>
         </div>
         <div className="metric-card">
-          <h4>{result.nodes?.length || 0}</h4>
+          <h4>{elements.length || 0}</h4>
           <small>Data Elements</small>
         </div>
         <div className="metric-card">
-          <h4>{result.edges?.length || 0}</h4>
+          <h4>{relationships.length || 0}</h4>
           <small>Relationships</small>
         </div>
         <div className="metric-card">
-          <h4>{result.complexity_score || 0}/10</h4>
-          <small>Complexity</small>
+          <h4>{transformations.length || 0}</h4>
+          <small>Transformations</small>
+        </div>
+        <div className="metric-card">
+          <h4>{result.complexity_score || 'N/A'}</h4>
+          <small>Complexity Score</small>
         </div>
       </div>
 
-      {/* Network Visualization */}
-      {result.nodes && result.edges && (
-        <div className="network-section">
-          <h4>🕸️ Lineage Network:</h4>
-          <NetworkGraph nodes={result.nodes} edges={result.edges} />
-        </div>
+      {/* Enhanced Executive Summary */}
+      {result.executive_summary && (
+        <details className="summary-section" open>
+          <summary>📋 Executive Summary</summary>
+          <ExecutiveSummaryFormatter summary={result.executive_summary} />
+        </details>
       )}
 
-      {/* Executive Summary */}
-      {result.executive_summary && (
-        <details className="summary-section">
-          <summary>📋 Executive Summary</summary>
-          <div className="summary-content">
-            {result.executive_summary}
+      {/* Tabbed Content */}
+      <div className="tabbed-content">
+        <div className="tab-navigation">
+          <button
+            className={`tab-button ${activeTab === 'elements' ? 'active' : ''}`}
+            onClick={() => setActiveTab('elements')}
+          >
+            📊 Data Elements ({elements.length})
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'relationships' ? 'active' : ''}`}
+            onClick={() => setActiveTab('relationships')}
+          >
+            🔗 Relationships ({relationships.length})
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'transformations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('transformations')}
+          >
+            ⚙️ Transformations ({transformations.length})
+          </button>
+        </div>
+
+        <div className="tab-content">
+          {activeTab === 'elements' && (
+            <div className="tab-panel">
+              <h4>📊 Data Elements</h4>
+              <DataElementsTable elements={elements} />
+            </div>
+          )}
+
+          {activeTab === 'relationships' && (
+            <div className="tab-panel">
+              <h4>🔗 Data Relationships</h4>
+              <RelationshipsTable relationships={relationships} />
+            </div>
+          )}
+
+          {activeTab === 'transformations' && (
+            <div className="tab-panel">
+              <h4>⚙️ Data Transformations</h4>
+              <TransformationsTable transformations={transformations} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Additional Analysis Details */}
+      {result.analysis_details && (
+        <details className="analysis-section">
+          <summary>🔍 Technical Analysis Details</summary>
+          <div className="analysis-content">
+            <pre>{JSON.stringify(result.analysis_details, null, 2)}</pre>
           </div>
         </details>
       )}
     </div>
   );
 };
+
+//export default LineageVisualization;
 
 // Feedback Interface Component
 const FeedbackInterface = ({ feedbackData, onSelection }) => {
@@ -440,10 +732,22 @@ const MessageComponent = ({ message, onFeedbackSelection }) => {
 
   const renderMessageContent = () => {
     switch (message.messageType) {
+      case MESSAGE_TYPES.MARKDOWN:
+        return <MarkdownMessage content={message.content} metadata={message.metadata} />;
+      case MESSAGE_TYPES.TABLE:
+        return (
+          <div className="table-message">
+            <div className="table-header">
+              <span>📊 Generated Table</span>
+            </div>
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
+        );
+
       case MESSAGE_TYPES.VISUALIZATION:
         return (
           <>
-            <div>📊 Here's the lineage visualization for your query:</div>
+            <div>📊 Here's the lineage analysis results for your query:</div>
             <LineageVisualization result={message.metadata.result} />
           </>
         );
@@ -506,10 +810,18 @@ const QuickActions = ({ onActionClick, disabled }) => {
 
 // Main App Component
 const App = () => {
-  const [messages, setMessages] = useState([
+  const [currentMode, setCurrentMode] = useState(CHAT_MODES.LINEAGE);
+  const [lineageMessages, setLineageMessages] = useState([
     new ChatMessage(
       'system',
-      '🤖 Hello! I\'m your Data Lineage Assistant. I can help you trace data lineage, analyze contracts, and explore data relationships. What would you like to explore today?',
+      '🤖 Hello! I\'m your Data Lineage Assistant. I can help you trace data lineage, analyze contracts, and explore data relationships.',
+      MESSAGE_TYPES.SYSTEM
+    )
+  ]);
+  const [contractMessages, setContractMessages] = useState([
+    new ChatMessage(
+      'system',
+      '🤖 Hello! I\'m your Contract Creation Assistant. I can help you create data contracts, generate metadata documentation, and build schema definitions.',
       MESSAGE_TYPES.SYSTEM
     )
   ]);
@@ -523,13 +835,37 @@ const App = () => {
   // API Base URL - Update this to match your backend
   const API_BASE_URL = 'http://localhost:8000/api';
 
+  // Get current messages based on mode
+  const getCurrentMessages = () => {
+    return currentMode === CHAT_MODES.LINEAGE ? lineageMessages : contractMessages;
+  };
+
+  const setCurrentMessages = (messages) => {
+    if (currentMode === CHAT_MODES.LINEAGE) {
+      setLineageMessages(messages);
+    } else {
+      setContractMessages(messages);
+    }
+  };
+  // Message Handlers
+  const addMessage = (message) => {
+    const currentMessages = getCurrentMessages();
+    setCurrentMessages([...currentMessages, message]);
+  };
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [lineageMessages, contractMessages, currentMode]);
 
-  // API Functions
-  const processQuery = async (query) => {
+    // Handle mode change
+  const handleModeChange = (newMode) => {
+    if (processing) return;
+    setCurrentMode(newMode);
+    setAwaitingFeedback(false);
+    setInputValue('');
+  };
+  // API Functions for Lineage
+  const processLineageQuery = async (query) => {
     try {
       const response = await axios.post(`${API_BASE_URL}/lineage/query`, {
         query: query,
@@ -537,8 +873,128 @@ const App = () => {
       });
       return response.data;
     } catch (error) {
-      console.error('API Error:', error);
-      throw new Error('Failed to process query. Please check your connection.');
+      console.error('Lineage API Error:', error);
+      throw new Error('Failed to process lineage query. Please check your connection.');
+    }
+  };
+
+  const processContractQuery = async (query) => {
+    // Simulate API call - replace with actual contract creation endpoint
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Mock contract creation response
+    if (query.toLowerCase().includes('customer')) {
+      return {
+        success: true,
+        result_type: 'markdown',
+        content: `# Customer Data Contract
+
+## Table: customers
+
+### Description
+This contract defines the structure and governance rules for the customer data table.
+
+### Schema Definition
+
+| Column Name | Data Type | Required | Description |
+|-------------|-----------|----------|-------------|
+| customer_id | INTEGER | Yes | Primary key, unique customer identifier |
+| first_name | VARCHAR(50) | Yes | Customer's first name |
+| last_name | VARCHAR(50) | Yes | Customer's last name |
+| email | VARCHAR(100) | Yes | Customer's email address (unique) |
+| phone | VARCHAR(20) | No | Customer's phone number |
+| created_at | TIMESTAMP | Yes | Record creation timestamp |
+| updated_at | TIMESTAMP | Yes | Last update timestamp |
+
+### Data Quality Rules
+- Email must be unique across all records
+- Phone number format validation required
+- Names cannot contain numeric characters
+- All timestamps must be in UTC
+
+### Data Lineage
+- **Source Systems**: CRM System, Web Registration
+- **Downstream Systems**: Analytics DB, Marketing Platform
+- **Update Frequency**: Real-time via CDC
+
+### Data Governance
+- **Owner**: Customer Data Team
+- **Steward**: John Smith (john.smith@company.com)
+- **Classification**: PII - Restricted
+- **Retention**: 7 years after account closure
+
+### SLA
+- **Availability**: 99.9%
+- **Latency**: < 100ms for reads
+- **Backup**: Daily snapshots, 30-day retention
+
+Generated on: ${new Date().toISOString()}`,
+        metadata: {
+          title: 'Customer Data Contract',
+          filename: 'customer_data_contract',
+          type: 'data_contract'
+        }
+      };
+    } else if (query.toLowerCase().includes('template')) {
+      return {
+        success: true,
+        result_type: 'markdown',
+        content: `# Data Contract Template
+
+## Basic Information
+- **Contract Name**: [Contract Name]
+- **Version**: 1.0
+- **Owner**: [Data Owner]
+- **Created Date**: ${new Date().toLocaleDateString()}
+
+## Table Definition
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| [field_name] | [data_type] | [Yes/No] | [Description] |
+
+## Data Quality Rules
+- [Rule 1]
+- [Rule 2]
+- [Rule 3]
+
+## Governance
+- **Classification**: [Public/Internal/Confidential/Restricted]
+- **Retention Period**: [Time period]
+- **Access Control**: [Access rules]
+
+## SLA Requirements
+- **Availability**: [Percentage]
+- **Performance**: [Requirements]
+- **Backup**: [Backup strategy]`,
+        metadata: {
+          title: 'Data Contract Template',
+          filename: 'data_contract_template',
+          type: 'template'
+        }
+      };
+    } else {
+      return {
+        success: true,
+        result_type: 'table',
+        content: `## Generated Metadata Summary
+
+| Attribute | Value |
+|-----------|-------|
+| Query Processed | ${query} |
+| Processing Time | ${new Date().toLocaleTimeString()} |
+| Status | Success |
+| Type | Metadata Generation |
+
+### Recommendations
+- Define clear data quality rules
+- Establish ownership and governance
+- Document data lineage
+- Set up monitoring and alerting`,
+        metadata: {
+          title: 'Metadata Summary',
+          type: 'summary'
+        }
+      };
     }
   };
 
@@ -555,10 +1011,8 @@ const App = () => {
     }
   };
 
-  // Message Handlers
-  const addMessage = (message) => {
-    setMessages(prev => [...prev, message]);
-  };
+
+
 
   const handleUserMessage = async (userInput) => {
     if (!userInput.trim() || processing) return;
@@ -570,43 +1024,70 @@ const App = () => {
     addMessage(userMessage);
 
     try {
-      const result = await processQuery(userInput);
+      let result;
 
-      if (result.human_input_required) {
-        // Need human feedback
-        const feedbackMessage = new ChatMessage(
-          'assistant',
-          result.message || 'I need more information to help you...',
-          MESSAGE_TYPES.FEEDBACK_REQUEST,
-          result
-        );
-        addMessage(feedbackMessage);
-        setAwaitingFeedback(true);
-      } else if (result.error) {
-        // Error occurred
-        const errorMessage = new ChatMessage(
-          'assistant',
-          `❌ I encountered an issue: ${result.error}\n\nWould you like me to help you rephrase your query?`,
-          MESSAGE_TYPES.ERROR
-        );
-        addMessage(errorMessage);
-      } else {
-        // Success - show results
-        const successMessage = new ChatMessage(
-          'assistant',
-          '✅ Great! I found the lineage information you requested. Here\'s what I discovered:'
-        );
-        addMessage(successMessage);
+      if (currentMode === CHAT_MODES.LINEAGE) {
+        result = await processLineageQuery(userInput);
 
-        const vizMessage = new ChatMessage(
-          'assistant',
-          '',
-          MESSAGE_TYPES.VISUALIZATION,
-          { result }
-        );
-        addMessage(vizMessage);
+        if (result.human_input_required) {
+          // Need human feedback
+          const feedbackMessage = new ChatMessage(
+              'assistant',
+              result.message || 'I need more information to help you...',
+              MESSAGE_TYPES.FEEDBACK_REQUEST,
+              result
+          );
+          addMessage(feedbackMessage);
+          setAwaitingFeedback(true);
+        } else if (result.error) {
+          // Error occurred
+          const errorMessage = new ChatMessage(
+              'assistant',
+              `❌ I encountered an issue: ${result.error}\n\nWould you like me to help you rephrase your query?`,
+              MESSAGE_TYPES.ERROR
+          );
+          addMessage(errorMessage);
+        } else {
+          // Success - show results
+          const successMessage = new ChatMessage(
+              'assistant',
+              '✅ Great! I found the lineage information you requested. Here\'s what I discovered:'
+          );
+          addMessage(successMessage);
+
+          const vizMessage = new ChatMessage(
+              'assistant',
+              '',
+              MESSAGE_TYPES.VISUALIZATION,
+              {result}
+          );
+          addMessage(vizMessage);
+        }
       }
-    } catch (error) {
+    else {
+        // Contract mode
+        result = await processContractQuery(userInput);
+
+        if (result.success) {
+          const messageType = result.result_type === 'markdown' ? MESSAGE_TYPES.MARKDOWN : MESSAGE_TYPES.TABLE;
+          const contractMessage = new ChatMessage(
+            'assistant',
+            result.content,
+            messageType,
+            result.metadata
+          );
+          addMessage(contractMessage);
+        } else {
+          const errorMessage = new ChatMessage(
+            'assistant',
+            `❌ Contract creation failed: ${result.error}`,
+            MESSAGE_TYPES.ERROR
+          );
+          addMessage(errorMessage);
+        }
+      }
+    }
+    catch (error) {
       const errorMessage = new ChatMessage(
         'assistant',
         `❌ I'm sorry, something went wrong: ${error.message}\n\nPlease try rephrasing your question.`,
@@ -680,19 +1161,23 @@ const App = () => {
     }
   };
 
-  const clearChat = () => {
-    setMessages([
-      new ChatMessage(
-        'system',
-        '🤖 Chat cleared! How can I help you with data lineage today?',
-        MESSAGE_TYPES.SYSTEM
-      )
-    ]);
+  const clearCurrentChat = () => {
+    const systemMessage = new ChatMessage(
+      'system',
+      currentMode === CHAT_MODES.LINEAGE
+        ? '🤖 Chat cleared! How can I help you with data lineage today?'
+        : '🤖 Chat cleared! How can I help you create contracts and metadata today?',
+      MESSAGE_TYPES.SYSTEM
+    );
+    setCurrentMessages([systemMessage]);
     setAwaitingFeedback(false);
   };
 
+  const currentStatus = processing ? 'processing' : awaitingFeedback ? 'waiting' : 'ready';
+  const currentMessages = getCurrentMessages();
+
   const exportChat = () => {
-    const chatExport = messages.map(msg => ({
+    const chatExport = currentMessages.map(msg => ({
       timestamp: msg.timestamp.toISOString(),
       role: msg.role,
       content: msg.content,
@@ -709,45 +1194,61 @@ const App = () => {
     URL.revokeObjectURL(url);
   };
 
-  const currentStatus = processing ? 'processing' : awaitingFeedback ? 'waiting' : 'ready';
+
 
   return (
     <div className="app">
       {/* Header */}
       <header className="app-header">
-        <h1>🤖 Data Lineage Chat Assistant</h1>
+        <h1> Finance Metadata Discovery Assistant</h1>
       </header>
 
       <div className="app-body">
         {/* Sidebar */}
         <aside className="sidebar">
           <div className="sidebar-section">
-            <h3>🎛️ Chat Controls</h3>
-            <StatusIndicator status={currentStatus} />
+            <h3>🤖 Agent Selection</h3>
+            <ModeSelector
+              currentMode={currentMode}
+              onModeChange={handleModeChange}
+              disabled={processing}
+            />
           </div>
 
           <div className="sidebar-section">
-            <h3>📊 Session Stats</h3>
+            <h3>📊 Agent Status</h3>
+            <StatusIndicator status={currentStatus} mode={currentMode} />
+          </div>
+
+          <div className="sidebar-section">
+          <h3>💬 Chat Stats</h3>
             <div className="stat">
-              <span className="stat-label">Messages:</span>
-              <span className="stat-value">{messages.length}</span>
+              <span className="stat-label">Current Messages:</span>
+              <span className="stat-value">{currentMessages.length}</span>
+            </div>
+            <div className="stat">
+              <span className="stat-label">Lineage Messages:</span>
+              <span className="stat-value">{lineageMessages.length}</span>
+            </div>
+            <div className="stat">
+              <span className="stat-label">Contract Messages:</span>
+              <span className="stat-value">{contractMessages.length}</span>
             </div>
             <div className="stat">
               <span className="stat-label">Session ID:</span>
               <span className="stat-value">{sessionId.slice(0, 8)}...</span>
             </div>
           </div>
-
           <div className="sidebar-section">
-            <h3>⚡ Quick Actions</h3>
-            <button className="sidebar-btn clear-btn" onClick={clearChat}>
-              🗑️ Clear Chat
+            <h3>⚡ Actions</h3>
+            <button className="sidebar-btn" onClick={clearCurrentChat}>
+              <RefreshCw size={16} />
+              Clear {currentMode === CHAT_MODES.LINEAGE ? 'Lineage' : 'Contract'} Chat
             </button>
-            <button className="sidebar-btn export-btn" onClick={exportChat}>
+                  <button className="sidebar-btn export-btn" onClick={exportChat}>
               💾 Export Chat
             </button>
           </div>
-
           <details className="sidebar-section">
             <summary>❓ Help & Examples</summary>
             <div className="help-content">
@@ -773,7 +1274,7 @@ const App = () => {
         <main className="chat-main">
           <div className="chat-container">
             <div className="messages-container">
-              {messages.map(message => (
+              {currentMessages.map(message => (
                 <MessageComponent
                   key={message.id}
                   message={message}
@@ -788,10 +1289,17 @@ const App = () => {
           {/* Input Area */}
           <div className="input-container">
             {!awaitingFeedback && (
-              <QuickActions
-                onActionClick={handleUserMessage}
-                disabled={processing}
-              />
+              currentMode === CHAT_MODES.LINEAGE ? (
+                <LineageQuickActions
+                  onActionClick={handleUserMessage}
+                  disabled={processing}
+                />
+              ) : (
+                <ContractQuickActions
+                  onActionClick={handleUserMessage}
+                  disabled={processing}
+                />
+              )
             )}
 
             <div className="input-row">
