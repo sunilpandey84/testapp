@@ -1,0 +1,346 @@
+import json
+import yaml
+from typing import Dict, Any, List, Callable, Optional
+from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolExecutor
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+
+
+class DynamicLangGraphBuilder:
+    """
+    Build LangGraph graphs dynamically from JSON/YAML templates
+    """
+    
+    def __init__(self):
+        self.node_functions = {}
+        self.conditional_functions = {}
+        
+    def register_node_function(self, name: str, func: Callable):
+        """Register a function that can be used as a node in the graph"""
+        self.node_functions[name] = func
+        
+    def register_conditional_function(self, name: str, func: Callable):
+        """Register a conditional function for routing"""
+        self.conditional_functions[name] = func
+    
+    def load_template_from_json(self, json_path: str) -> Dict[str, Any]:
+        """Load graph template from JSON file"""
+        with open(json_path, 'r') as f:
+            return json.load(f)
+    
+    def load_template_from_yaml(self, yaml_path: str) -> Dict[str, Any]:
+        """Load graph template from YAML file"""
+        with open(yaml_path, 'r') as f:
+            return yaml.safe_load(f)
+    
+    def load_template_from_dict(self, template: Dict[str, Any]) -> Dict[str, Any]:
+        """Load graph template from dictionary"""
+        return template
+    
+    def build_graph_from_template(self, template: Dict[str, Any], state_schema: Dict[str, Any]) -> StateGraph:
+        """
+        Build a LangGraph from a template
+        
+        Template format:
+        {
+            "name": "graph_name",
+            "nodes": [
+                {
+                    "name": "node_name",
+                    "function": "registered_function_name",
+                    "config": {...}  # optional config for the node
+                }
+            ],
+            "edges": [
+                {
+                    "from": "node_name",
+                    "to": "node_name"
+                }
+            ],
+            "conditional_edges": [
+                {
+                    "from": "node_name",
+                    "condition": "registered_condition_function",
+                    "mapping": {
+                        "condition_result": "target_node"
+                    }
+                }
+            ],
+            "entry_point": "start_node",
+            "finish_points": ["end_node1", "end_node2"]
+        }
+        """
+        
+        # Create the graph with state schema
+        graph = StateGraph(state_schema)
+        
+        # Add nodes
+        for node in template.get("nodes", []):
+            node_name = node["name"]
+            function_name = node["function"]
+            
+            if function_name not in self.node_functions:
+                raise ValueError(f"Function '{function_name}' not registered for node '{node_name}'")
+            
+            # Create node function with config if provided
+            node_func = self._create_node_with_config(
+                self.node_functions[function_name], 
+                node.get("config", {})
+            )
+            
+            graph.add_node(node_name, node_func)
+        
+        # Add regular edges
+        for edge in template.get("edges", []):
+            graph.add_edge(edge["from"], edge["to"])
+        
+        # Add conditional edges
+        for cond_edge in template.get("conditional_edges", []):
+            condition_func_name = cond_edge["condition"]
+            
+            if condition_func_name not in self.conditional_functions:
+                raise ValueError(f"Condition function '{condition_func_name}' not registered")
+            
+            graph.add_conditional_edges(
+                cond_edge["from"],
+                self.conditional_functions[condition_func_name],
+                cond_edge["mapping"]
+            )
+        
+        # Set entry point
+        if "entry_point" in template:
+            graph.set_entry_point(template["entry_point"])
+        
+        # Set finish points
+        for finish_point in template.get("finish_points", []):
+            graph.add_edge(finish_point, END)
+        
+        return graph
+    
+    def _create_node_with_config(self, func: Callable, config: Dict[str, Any]) -> Callable:
+        """Create a node function with configuration"""
+        if not config:
+            return func
+        
+        def configured_node(state):
+            return func(state, **config)
+        
+        return configured_node
+
+
+# Example state schema
+class GraphState:
+    messages: List[BaseMessage]
+    next_action: Optional[str] = None
+    result: Optional[str] = None
+    iteration_count: int = 0
+
+
+# Example node functions
+def input_processor(state: GraphState, greeting: str = "Hello") -> GraphState:
+    """Process input and add greeting"""
+    if not state.get("messages"):
+        state["messages"] = []
+    
+    # Add a greeting message
+    state["messages"].append(AIMessage(content=f"{greeting}! How can I help you?"))
+    state["iteration_count"] = state.get("iteration_count", 0) + 1
+    return state
+
+
+def analyzer(state: GraphState, analysis_type: str = "basic") -> GraphState:
+    """Analyze the conversation"""
+    messages = state.get("messages", [])
+    last_message = messages[-1] if messages else None
+    
+    if last_message:
+        analysis = f"Performed {analysis_type} analysis on: {last_message.content[:50]}..."
+        state["result"] = analysis
+        
+        # Determine next action based on content
+        if "help" in last_message.content.lower():
+            state["next_action"] = "help"
+        elif "goodbye" in last_message.content.lower():
+            state["next_action"] = "end"
+        else:
+            state["next_action"] = "continue"
+    
+    return state
+
+
+def help_provider(state: GraphState) -> GraphState:
+    """Provide help information"""
+    help_message = AIMessage(content="I can help you with various tasks. What would you like to know?")
+    state["messages"].append(help_message)
+    state["next_action"] = "end"
+    return state
+
+
+def conversation_continuer(state: GraphState) -> GraphState:
+    """Continue the conversation"""
+    response = AIMessage(content="I understand. Is there anything else you'd like to discuss?")
+    state["messages"].append(response)
+    state["next_action"] = "end"
+    return state
+
+
+# Example conditional functions
+def route_based_on_action(state: GraphState) -> str:
+    """Route based on the next_action field"""
+    action = state.get("next_action", "continue")
+    return action
+
+
+def route_based_on_iteration(state: GraphState) -> str:
+    """Route based on iteration count"""
+    count = state.get("iteration_count", 0)
+    return "end" if count > 3 else "continue"
+
+
+# Example usage
+def main():
+    # Initialize the builder
+    builder = DynamicLangGraphBuilder()
+    
+    # Register node functions
+    builder.register_node_function("input_processor", input_processor)
+    builder.register_node_function("analyzer", analyzer)
+    builder.register_node_function("help_provider", help_provider)
+    builder.register_node_function("conversation_continuer", conversation_continuer)
+    
+    # Register conditional functions
+    builder.register_conditional_function("route_by_action", route_based_on_action)
+    builder.register_conditional_function("route_by_iteration", route_based_on_iteration)
+    
+    # Example JSON template
+    json_template = {
+        "name": "conversation_graph",
+        "nodes": [
+            {
+                "name": "start",
+                "function": "input_processor",
+                "config": {
+                    "greeting": "Welcome"
+                }
+            },
+            {
+                "name": "analyze",
+                "function": "analyzer",
+                "config": {
+                    "analysis_type": "detailed"
+                }
+            },
+            {
+                "name": "help",
+                "function": "help_provider"
+            },
+            {
+                "name": "continue",
+                "function": "conversation_continuer"
+            }
+        ],
+        "edges": [
+            {"from": "start", "to": "analyze"}
+        ],
+        "conditional_edges": [
+            {
+                "from": "analyze",
+                "condition": "route_by_action",
+                "mapping": {
+                    "help": "help",
+                    "continue": "continue",
+                    "end": "END"
+                }
+            }
+        ],
+        "entry_point": "start",
+        "finish_points": ["help", "continue"]
+    }
+    
+    # Build the graph
+    graph = builder.build_graph_from_template(json_template, GraphState)
+    
+    # Compile the graph
+    compiled_graph = graph.compile()
+    
+    # Test the graph
+    initial_state = {
+        "messages": [HumanMessage(content="I need help with something")],
+        "iteration_count": 0
+    }
+    
+    result = compiled_graph.invoke(initial_state)
+    print("Graph execution result:")
+    for message in result["messages"]:
+        print(f"- {message.content}")
+    
+    return compiled_graph
+
+
+# Example YAML template (save as graph_template.yaml)
+yaml_template_example = """
+name: "advanced_conversation_graph"
+nodes:
+  - name: "start"
+    function: "input_processor"
+    config:
+      greeting: "Hi there"
+  - name: "analyze"
+    function: "analyzer"
+    config:
+      analysis_type: "comprehensive"
+  - name: "help"
+    function: "help_provider"
+  - name: "continue"
+    function: "conversation_continuer"
+
+edges:
+  - from: "start"
+    to: "analyze"
+
+conditional_edges:
+  - from: "analyze"
+    condition: "route_by_action"
+    mapping:
+      help: "help"
+      continue: "continue"
+      end: "END"
+
+entry_point: "start"
+finish_points: ["help", "continue"]
+"""
+
+def save_yaml_example():
+    """Save the YAML example to a file"""
+    with open("graph_template.yaml", "w") as f:
+        f.write(yaml_template_example)
+    print("YAML template saved to graph_template.yaml")
+
+
+def load_from_yaml_example():
+    """Example of loading from YAML file"""
+    builder = DynamicLangGraphBuilder()
+    
+    # Register functions (same as above)
+    builder.register_node_function("input_processor", input_processor)
+    builder.register_node_function("analyzer", analyzer)
+    builder.register_node_function("help_provider", help_provider)
+    builder.register_node_function("conversation_continuer", conversation_continuer)
+    builder.register_conditional_function("route_by_action", route_based_on_action)
+    
+    # Load from YAML
+    template = builder.load_template_from_yaml("graph_template.yaml")
+    graph = builder.build_graph_from_template(template, GraphState)
+    
+    return graph.compile()
+
+
+if __name__ == "__main__":
+    # Run the main example
+    compiled_graph = main()
+    
+    # Save YAML example
+    save_yaml_example()
+    
+    print("\nDynamic LangGraph created successfully!")
+    print("You can now modify the JSON/YAML templates to change the graph structure without modifying code.")
