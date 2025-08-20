@@ -1,0 +1,29 @@
+As a agentic AI expert please create agent based backend application for lineage tracking here is requirement
+This is metadata driven data platform where all data processing rules captured in below metadata tables and lineage should be derived with below metadata dat amodel
+Data contract table: v_contract_code(primary key), v_contract_name, v_contract_description, v_source_owner, v_ingestion_owner, v_source_system, v_target_system
+v_sla and other details captured
+etl pipeline table: v_query_code(primary key), v_query_description, v_target_table_or_object, v_source_table_or_object, v_source_type, v_target_type, v_from_clause,
+v_where_clause, v_contract_code(foreign key)
+etl_pippeline_dependecy: v_query_code, v_depends_on (this table will provide which query code is depend on other to establish the flow of pipeline)
+etl element mapping: v_query_code(foreign key from etl pipeline table), v_source_data_element_code(foreign key from business element mapping table),
+v_target_data_element_code(foreign key from business element mapping table), v_transformation_code(foreign key from transformation rules table)
+transformation rules table: v_transformation_code, v_transformation_rules
+business element mapping table: v_data_element_code, v_data_element_name, v_table_name, v_business_element_code(foreign key from business dictionary table)
+business dictionary table: v_business_element_code, v_business_definiton
+Now i am providing rules using which lineage should be traced with scenario
+scenario 1: when user want to see element level lineage based on contract
+a. user will provide contract name and based on that we should query contract table get v_contract_code and then fire query in etl pipeline metadata table
+and get the all query codes associated with it
+b. filter etl element mapping table based on filtered v_query_code and get v_source_data_element_code, v_target_data_element_code and  v_transformation_code
+c. to esablish element level relationship and data flow between v_source_data_element_code and v_traget_data_element_code across the  v_query_code - we should check if v_target_data_element_code
+is used as v_source_data_element_code(or input) to another v_query_code,
+c. To fetch transformation for each data element use v_transformation_code in transformation rules table to get the v_transformation_rules from etl element mapping table
+d. to fetch the column name from business element mapping table use v_source_data_element_code and v_target_data_element_code from etl element mapping table and query
+business element mapping table which v_data_element_code
+scenario 2: when user want to see element level lineage based on data element name
+a. user will provide data element name, find the righ match in business element mapping table in v_data_element_name column
+b. then search in etl element mapping table in v_target_data_element_code or v_source_data_element_code here we might have to traverse across the table until
+trace is not ended also against each v_target_data_element_code or v_source_data_element_code we have v_query_code
+c. we should also query etl pipeline table to get v_target_table_or_object and then get v_contract_code and query data contract table to get the v_contract_name
+Based on above context and metadata build end-end lineage using langgraph agents, mcp tools or tools also have human in the loop
+provide json as output
